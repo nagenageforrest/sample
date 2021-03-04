@@ -1,0 +1,206 @@
+---
+title: "**Bitcoin as A Hedge, Diversifier, and Safe Haven**"
+author: "Nage Ngo"
+date: "12/17/2020"
+output: pdf_document
+indent: true
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(kableExtra)
+```
+```{r import, include=F, message=F, error=F, warning=F}
+processed <- readr::read_csv("data/processed.csv")
+```
+
+# Introduction
+
+\indent
+As financial markets become more and more complex and integrated, interest in diversification and safe-haven assets is amplified when it comes to portfolio risk management. High correlation and interconnectedness of financial securities mean an intense increase in the price of one security leads to an intense increase in another, and similarly for negative price movement. For this reason, a growing number of studies have tested the diversification and safe haven properties of a specific commodity commonly associated with the safe haven/flight-to-quality concept. 
+
+This paper hopes to contribute to this literature by specifically studying the link between Bitcoin and stock prices against the backdrop of the COVID-19 recession. We first address the question of whether Bitcoin’s price actions are correlated with the US stock market, i.e. whether it could serve as an effective safe haven against equity price volatility. Another part of the analysis concerns the optimal asset allocation into Bitcoin over time, as either a safe haven, hedge, or diversifier.
+
+Baur and Lucey (2010) are the first to formulate empirically testable definitions for the commonly used terminologies such as safe-haven assets. They define:
+
+- A Hedge as an asset uncorrelated/negatively correlated with another asset or portfolio on average
+
+- A Safe haven as an asset uncorrelated/negatively correlated with another asset or portfolio in times of market stress or turmoil
+
+- Diversifier as an asset positively (but not perfectly correlated) with another asset/portfolio on average.
+
+In their paper, Baur and Lucey emphasize the temporal aspect of these definitions. A hedge and a diversifier, for instance, do not stem portfolio losses in times of extreme financial turmoil and volatility, because they only work in the average market setting. Similarly, in a rising bull market, there is no need for a safe-haven asset.
+
+Our preliminary empirical results demonstrate Bitcoin's hedging abilities in normal market conditions. However, against the backdrop of the COVID-19 recession, Bitcoin has failed as a safe-haven asset. The growing correlation between Bitcoin and NASDAQ also suggests that the currency is behaving more and more like a diverisifier than a hedge or safe haven. Furthermore, the long term optimal weight a 2-asset portfolio should allocate to Bitcoin is estimated to be roughly 6%. 
+
+To compare and contrast, and also to ensure the robustness of our approach, the stock of Apple is simultaneously tested for the safe-haven, hedge and diversifying property. It is estimated that a portfolio, which is heavily overweight in overall high performing sectors (Tech, Healthcare...) and proxied by the NASDAQ Index, should allocate approximately -7% to Apple shares. This is consistent with the fact that Apple constitutes around 13.058%^[Slickcharts. NASDAQ 100. Data as of [12/11/2020](https://www.slickcharts.com/nasdaq100)] of the NASDAQ 100.
+
+# Data Description
+
+\indent
+Our data are obtained from R package *quantmod*, a package designed to assist quantitative traders in building trading models. These are daily data which are from Yahoo and for
+
+- The broad-based NASDAQ Composite Index, which includes over 2,500 companies, more than most other stock market indexes 
+
+- The BTC/USD, Bitcoin to US Dollar, currency exchange rate
+
+- The Apple Inc. (AAPL) stock quote
+
+All of the series are daily and the timeline is from 2014-09-18	to 2020-12-08. Although Bitcoin debuted in July 2010, Yahoo currency exchange data only goes back to the aforementioned date 2014, meaning the only period with extreme market stress in our timeline is the COVID-19 period. Because Bitcoin is traded 24/7 every day of the week whereas the regular trading hours for NASDAQ are from 9:30 am to 4:00 pm 5 days a week, we need to rebalance the data by removing all not available data points after merging the series. This might also leave out a certain amount of volatility in Bitcoin, either in normal or extreme market conditions.
+
+![Price Series for NASDAQ, Apple, and Bitcoin](final-fig/plot-sum.png)
+
+```{r, echo=FALSE, warning=F, error=F, message=F}
+processed <- readr::read_csv("data/processed.csv")
+processed[,"X1"] <-NULL
+modelsummary::datasummary_skim(processed, title = "Data Summary Statistics")
+cor <- cor(processed[,c("lnas","lapp","lbtc")])
+kbl(cor, booktabs = T, caption = "Correlation Matrix") %>%
+  kable_styling(latex_options = c("striped"))
+```
+
+Figure 1 shows the time series for the three considered assets prior to and after taking the log difference. The first row shows the original price series and, based on the trend we could visually detect alone, we know the series are not mean-reverting and, thus, non-stationary. After transforming the series, we could visually detect no trend in the series. To test for the presence of a unit root or stationarity, the KPSS test is applied. The tests show all transformed series are trend-stationary [APPENDIX].
+
+From the summary statistics table, the standard deviation values show that BTC is the most volatile of the 3 assets, followed by the NASDAQ and then Apple. Bitcoin has particularly extreme fluctuations, evidenced by the minimum and maximum values of returns. Also, based on the correlation matrix and the pair-wise correlation values, BTC seems to be relatively loosely correlated with either Apple or the NASDAQ Composite. Apple, on the other hand, is highly correlated with the NASDAQ Index, which is expected, since, not only is it an equity instrument, it is also the largest stock in terms of market cap included in the NASDAQ.
+
+# Methodology
+
+## Two-step DCC-GARCH model
+
+\indent
+
+The DCC-GARCH involves two steps^[Approach is based on Orskaug, E. (2009).], the first of which is to account for the conditional heteroskedasticity. We apply the Lagrange Multiplier (LM) test to check for the presence of autoregressive conditional heteroscedasticity (ARCH). The test statistics obtained help reject the null hypothesis of ARCH being absent. After the presence of volatility clustering and autocorrelation are confirmed, we could proceed with multivariate volatility modeling using the Dynamic Conditional Correlation (DCC) model of Engle (2002).
+
+To determine the best ARMA orders, we use the *auto.arima()* function in R *forecast* package, which applies a variation of the Hyndman-Khandakar algorithm (Hyndman & Khandakar, 2008) and combines unit root tests, minimisation of the AICc and MLE to obtain an ARIMA model. Based on the returns of this function and the ACF and PACF graphs, we pick ARMA order of (2,0). Also from visually surveying the ACF and PACF graphs, we decide on GARCH order of (1,1).
+
+The first step is to estimate the univariate GARCH models for each series, with ARMA(2,0) and GARCH(1,1) specifications. Here, we are estimating the conditional volatility $\sigma_{i,t}$  for each one of the 3 return series. For the second step, we apply DCC and model the conditional return as
+
+$$\phi (L)r_{t,i}/I_{t-1,i} = \mu_{t,i}  +\epsilon _{i,t}$$
+
+\noindent with $i$ being 2 of the 3 assets considered, $\phi (L)$ being the lag polynomial and $I_{t-1,i}$ signifies information up to the last period. $i$ is 2 of the 3 assets because we are evaluate the DCC for a pair of assets at a time, that is Apple with NASDAQ, and Bitcoin with NASDAQ.
+
+$\epsilon$ is a vector containing that the error term and could be modeled as $\epsilon_{i,t} = \Omega_t^{1\over2} Z_t$, with $Z_t$ being white noise and a standard normal, iid distribution and $\Omega_t$ the conditional covariance matrix, such that
+
+$$\Omega_t = \begin{pmatrix} V_{t-1} y_{i1,t} & cov(y_{i1,t},y_{i2,t}) \\ cov(y_{i2,t}, y_{i1,t}) & V_{t-1} y_{i2,t} \end{pmatrix}  = \begin{pmatrix} \sigma_{i1,t-1}^2 & \sigma_{i1,i2,t-1} \\ \sigma_{i2,i1,t-1} & \sigma_{i2,t-1}^2 \end{pmatrix} $$
+
+\noindent with $i1, i2$ being the 2 assets include in the multivariate model. $\Omega_t$ has to be positive definite, because the matrix trace  ($\sigma_{i1,t-1}^2 +\sigma_{i2,t-1}^2$) and determinants ($\sigma_{i1,t-1}^2\sigma_{i2,t-1}^2 -\sigma_{i1,i2,t-1}\sigma_{i2,i1,t-1}$) are strictly positive. The matrix is also symmetric because $\sigma_{i1,i2,t-1}=\sigma_{i2,i1,t-1}$. 
+
+We specify $\Omega_t$ using the DCC model, such that $\Omega_t = D_tR_tD_t$ where $D = diag\{\Omega_{1,t}^{1/2}\}$ is the diagonal matrix of time-dependent conditional standard deviations, which could be extracted from the univariate GARCH processes in the first step. 
+
+$R$ is the correlation matrix, and therefore symmetric, $R_t= \begin{bmatrix} \rho_{11,t} & \rho_{12,t} \\ \rho_{21,t} & \rho_{22,t}  \end{bmatrix}= \begin{bmatrix} 1 & \rho_{12,t} \\ \rho_{21,t} & 1  \end{bmatrix}$ because we estimate DCC for only 2 series at a time, and could be decomposed into $R_t = Q^{\star -1}_t Q_t Q^{\star- 1}_t$, where $Q_t$ is the positive definite matrix the conditional variances and covariances of the standardized errors $\epsilon_t$ and $Q^{\star -1}_t$ is a diagonal matrix with the square root of the diagonal elements of $Q_t$. 
+
+The DCC model is then given by 
+
+\begin{align} 
+Q_t = (1-\alpha-\beta)\bar Q + \alpha\epsilon_{t-1} \epsilon'_{t-1} + \beta Q_{t-1} 
+\end{align}
+
+\noindent with $\alpha$ and $\beta$ being non-negative scalars, $\alpha+ \beta <1$. $\bar Q$ is the unconditional covariance of the standardized disturbances $\epsilon_t$. Finally, since we are not comparing different models for the same series, Log-Likelihood values might not be of much usefulness for this particular paper.
+
+## Allocation Optimization
+
+\indent
+Assume we have a portfolio containing 2 assets, Bitcoin and NASDAQ Index, or Apple and NASDAQ Index. Let the weight of either BTC or Apple to be $\omega$ and NASDAQ $(1-\omega)$.
+
+We could model these series as a bivariate vector given by $Y_t$
+
+$$
+Y_t = \begin{bmatrix}
+  y_{i, t} \\
+  y_{N, t} \\
+  \end{bmatrix}
+= \begin{bmatrix}
+  \Delta log(i_t) \\
+  \Delta log(NASDAQ_t) \\
+  \end{bmatrix}
+$$
+
+\noindent with $i$ being either Apple or BTC. The returns of this portfolio is $return_t=\omega y_{i, t} + (1-\omega) y_{nas,t}$. And the risk of this portfolio is given by the variance of the portfolio's return, or
+
+\begin{gather}
+var_{t-1} (return_t) = var_{t-1}(\omega y_{i, t} + (1-\omega) y_{nasdaq,t}) \\
+= \omega^2 var_{t-1}(y_{i,t}) + (1-\omega)^2 var_{t-1}(y_{nasdaq,t}) +2 \omega (1-\omega) \notag \\
+cov_{t-1}(y_{i,t},y_{nasdaq,t})    = \omega^2 \sigma^2_{i,t-1} + (1-\omega)^2 \sigma^2_{nasdaq,t-1} +2 \omega (1-\omega) \sigma_{nasdaq-i,t-1} \notag
+\end{gather}
+
+To minimize the risk at time t, we take the FOC of $var_t(return_i)$, or
+
+$$
+V_t = \omega^2 \sigma^2_{i,t} + (1-\omega)^2 \sigma^2_{nasdaq,t} +2 \omega (1-\omega) \sigma_{i,nasdaq,t} 
+\to {{\delta V_t}\over{\delta \omega}} = 2\omega\sigma^2_{i,t} - 2(1-\omega)\sigma^2_{nas,t} + 2\sigma_{i,nas,t} - 4\omega\sigma_{i,nas,t} = 0
+$$
+
+Since the second derivative is positive (function is concave up), the weight we should assign to Apple or BTC at time t to minimize risk is
+
+\begin{align}
+\omega = {{\sigma^2_{nas,t} - \sigma_{i,nas,t}}
+\over{}\sigma^2_{i,t}+\sigma^2_{nas,t}- \sigma_{i,nas,t}}
+\end{align}
+
+# Empirical Results
+
+### Dynamic Conditional Correlations 
+
+\indent
+Since we have confirmed the presence of volatility clustering and autocorrelation in the time series (see LM test *data_exp.Rmd*), the first step of the DCC-GARCH approach is to estimate the univariate ARMA-GARCH model for each of the log-return series. The univariate estimation results are as follows 
+
+\begin{verbatim}                 
+[APPENDIX TABLE 1]
+\end{verbatim}
+
+The GARCH results show that all of the series have statistically significant ARCH (alpha1) and GARCH (beta1) effects. mu is either near 0 or statistically insignificant. But that is to be expected since mu is the intercept of the conditional mean model, which is stationary and could be zero after transformation. AR2 terms are only significantly different from zero in one series, so we could potentially improve the model by removing this lag term. With the high and significant value for the GARCH effects, Apple and NASDAQ appear to have more conditional volatility as well as persistent volatility than Bitcoin, which is consistent with the findings of Kumar (2020) and other studies assessing equity and cryptocurrency volatility. 
+
+After obtaining the univariate estimates for all series, we separate the assets into 2 possible portfolio options (1) Apple $\omega$ and NASDAQ $1-\omega$ and (2) BTC $\omega$ and NASDAQ $1-\omega$. We then estimate the DCC part of the approach for each pair of assets.
+
+\begin{verbatim}                 
+[APPENDIX TABLE 2]
+\end{verbatim}
+
+From the DCC results, we notice dcca1, or $DCC_\alpha$ is not statistically significant but $DCC_\beta$ is, indicating a joint GARCH effect, i.e. volatility is persistent, but not ARCH. Since the process has $DCC_\alpha = 0$ and $DCC_\alpha = 0.9923 = 0.007$, the conditional correlation is declining over time and is asymptoting towards ${1- DCC_\beta \over DCC_\beta} \approx 0$. 
+
+![Bitcoin and NASDAQ - Conditional (Co)variances and Correlation](final-fig/corcov_NB.png)
+
+Figure 2 plots the conditional covariance and correlation for Bitcoin and NASDAQ. The variances and covariance for both series spike at the beginning of 2020, meaning both Bitcoin and the Equity prices became extremely volatile during this period, expectedly so given the economic uncertainty due to the pandemic. The conditional correlation hovers around 0.05 during the majority of the studied period, suggesting the cryptocurrency may be loosely correlated with the stocks trading on NASDAQ. This indicates that Bitcoin could serve as a great hedge against downward movements in stock prices in normal market setting time. However, since around 2017, the correlation has been increasing and quadrupled to almost 0.25 as the COVID-induced downturn kicked in, suggesting that Bitcoin is not a good safe haven investors could trust during a crisis. This may stem from the fact that cryptocurrencies are becoming more and more mainstream either as an investment or speculation instrument.
+
+
+While the long-term outlook is still bleak for the real economy, stock markets have been performing at all-time highs as of December 13, 2020, with both the NASDAQ and S&P 500 quickly recouping all their March losses sometime in August. In this setting, one could expect Bitcoin to go down, given its track record of low correlation with equity. However, the overall market uncertainty concerning the pandemic and concerns about inflation and fiat currencies' viability--due to Central Banks' Quantitative Easing efforts-- may have drawn more investors to the decentralized protocol of cryptocurrencies. As more and more digital payment companies, including Square and (beginning 2021) Paypal, accept payments and deposits in cryptocurrency or, like Robinhood and Webull, enable retail investors to trade crypto, we are witnessing the accelerated financialization of the coin markets. Baur, et al. (2012) is the first paper to reexamine the dynamic role of gold as a safe haven and theoretically demonstrate that increased gold holdings may destroy the safe haven property itself. This might also be the case for Bitcoin: The perception that cryptocurrencies could serve as an effective safe haven, either because of past obscurity or impracticality (much like gold), could draw a lot more attention to the commodity during trying times and, thereby, destroying any of its potential safe haven properties.
+
+In comparison, the conditional variances and covariance between Apple and NASDAQ (Figure 1 - Appendix) also markedly spiked around March 2020. The correlation between the two assets, however, although fluctuating significantly, consistently oscillates about 0.75 on average and peaks at around 0.85 during the start of 2020, suggesting the Apple stock highly correlates with the NASDAQ Index and even more so following extreme shocks. Since the stock tracks closely with the Index in normal market conditions and also highly correlates in a crisis, it serves as neither a hedge nor a safe haven, but rather as a diversifier. This makes sense because Apple is the largest stock within the NASDAQ Index itself. Thus, once you have owned NASDAQ, not owning Apple might be more conducive to risk management in the long run.
+
+### Optimal Allocation
+
+\indent
+To determine the precise optimal weight to allocate to either Bitcoin or Apple, we extract needed estimates and apply them to equation (3) in the Methodology section and obtain the time-dependent optimal weight as time series for both assets. Figure 3 plots the optimal weightage series and their right-aligned rolling averages over various rolling window widths.
+
+![Optimal Portfolio Allocation in 2-asset Portfolio with NASDAQ Index](final-fig/b_a_w.png)
+
+The figure confirms our expectation that we should own little, if any at all, stock of Apple, in a 2-asset portfolio alongside NASDAQ. There are specific periods, such as Q2 2020, when it is prudent to own both Apple and NASDAQ at the same time, likely because of the fact that Tech and Healthcare stocks were much-hyped following the March decline in the initial phase of COVID-19. However, in the long run, based on the 253-day rolling average (there are 253 trading days a year), it is theoretically optimal to maintain a weight of -7.1% in Apple stock and 107.1% in NASDAQ. This could be achieved by shorting the stock, but one could simply long other stocks with fundamentally different elements instead.
+
+For Bitcoin, in the long run, it is optimal to allocate around 6% of the portfolio to the currency. This is consistent with the existing literature and our own findings which suggest the hedging and growing diversifying properties of BTC. The spikes in the 30-day optimal weight series grow in magnitude sequentially, peaking at above 40% around May 2020. This sequential growth means *BTC's response to exogenous shocks is becoming more and more similar to that of Apple*. Since the conditional correlation between BTC and NASDAQ has been on the rise, evidenced by the fourfold increase in Figure 2 (COR), the spike is consistent with the fact around May the stock market was recovering from its losses in March, with the biggest gainers being sectors including Tech and Healthcare in which NASDAQ is heavily overweight. The growing increase in both the correlation and optimal weightage indicates that Bitcoin might very well already be on the path to becoming a diversifier.
+
+# Concluding Remarks
+
+\indent
+After conducting a two-step DCC-GARCH analysis and calculating for the time-varying optimal asset allocation of Bitcoin, the paper has obtained results that are in line with the growing literature on cryptocurrency volatility. The conditional correlation between Bitcoin and the broad-based NASDAQ Composite is minimal for most of the timeline studied, especially relative to Apple stocks, confirming the hedging properties found by Bouri et al. (2019a) and Kumar (2020). Also consistent with Kumar (2020), the safe-haven properties of Bitcoin were not present in response to the COVID shock. The simultaneous comparison with Apple perhaps even suggests that over time, the difference between BTC and Apple has narrowed somewhat, given the rising correlation between BTC and NASDAQ. BTC, in some way, is indeed behaving more and more like a diversifier.
+
+All in all, based on our preliminary results, Bitcoin may serve as an effective hedge/diversifier during normal market setting, but not as a safe haven. However, more research has to be done to draw concrete conclusions as to Bitcoin's roles within the realm of portfolio risk management. For future research, it is worthwhile to test other financial instruments for safe haven potentials, especially now that this quality of BTC has been compromised during COVID-19. A good place to start would be gold, a commodity which more or less is synonymous with the safe-haven asset concept itself. 
+
+\newpage
+
+# REFERENCES
+
+\parindent0pt
+
+Baur, D. G., & Lucey, B. M. (2010). Is gold a hedge or a safe haven? An analysis of stocks, bonds and gold. *Financial Review, 45(2),* 217-229.
+
+Baur, D. G., & Glover, K. J. (2012). The destruction of a safe-haven asset?. Available at SSRN 2142283. 
+
+Bouri, E., K. Gkillas, and Rangan Gupta (2019) “Trade Uncertainties and the Hedging Abilities of Bitcoin” *Economic Notes*, e12173.
+
+Engle, R. (2002). Dynamic Conditional Correlation: A Simple Class of Multivariate Generalized Autoregressive Conditional Heteroskedasticity Models. *Journal of Business & Economic Statistics 20 (3)*, 339–350.
+
+Kumar, A. S. (2020). Testing Safe Haven Property of Bitcoin and Gold during Covid-19: Evidence from Multivariate GARCH analysis. *Economics Bulletin, 40(3),* 2005-2015.
+
+Orskaug, E. (2009). Multivariate dcc-garch model:with various error distributions *Master's thesis, Institutt for matematiske fag*.
